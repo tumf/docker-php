@@ -4,7 +4,7 @@ FROM debian:jessie
 RUN apt-get update && apt-get install -y ca-certificates curl libxml2 --no-install-recommends && rm -r /var/lib/apt/lists/*
 
 # phpize deps
-RUN apt-get update && apt-get install -y autoconf gcc make pkg-config --no-install-recommends && rm -r /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y autoconf file gcc libc-dev make pkg-config re2c --no-install-recommends && rm -r /var/lib/apt/lists/*
 
 ENV PHP_INI_DIR /usr/local/etc/php
 RUN mkdir -p $PHP_INI_DIR/conf.d
@@ -17,7 +17,7 @@ RUN rm -rf /var/www/html && mkdir -p /var/lock/apache2 /var/run/apache2 /var/log
 # Apache + PHP requires preforking Apache for best results
 RUN a2dismod mpm_event && a2enmod mpm_prefork
 
-RUN mv /etc/apache2/apache2.conf /etc/apache2/apache2.conf.dist
+RUN mv /etc/apache2/apache2.conf /etc/apache2/apache2.conf.dist && rm /etc/apache2/conf-enabled/* /etc/apache2/sites-enabled/*
 COPY apache2.conf /etc/apache2/apache2.conf
 # it'd be nice if we could not COPY apache2.conf until the end of the Dockerfile, but its contents are checked by PHP during compilation
 
@@ -27,25 +27,24 @@ ENV PHP_EXTRA_CONFIGURE_ARGS --with-apxs2
 
 RUN gpg --keyserver pool.sks-keyservers.net --recv-keys 6E4F6AB321FDC07F2C332E3AC2BF0BC433CFC8B3 0BD78B5F97500D450838F95DFE857D9A90D90EC1
 
-ENV PHP_VERSION 5.6.6
+ENV PHP_VERSION 5.6.7
 
 # --enable-mysqlnd is included below because it's harder to compile after the fact the extensions are (since it's a plugin for several extensions, not an extension in itself)
 RUN buildDeps=" \
 		$PHP_EXTRA_BUILD_DEPS \
 		bzip2 \
-		file \
 		libcurl4-openssl-dev \
 		libreadline6-dev \
 		libssl-dev \
 		libxml2-dev \
-	"; \
-	set -x \
+	" \
+	&& set -x \
 	&& apt-get update && apt-get install -y $buildDeps --no-install-recommends && rm -rf /var/lib/apt/lists/* \
 	&& curl -SL "http://php.net/get/php-$PHP_VERSION.tar.bz2/from/this/mirror" -o php.tar.bz2 \
 	&& curl -SL "http://php.net/get/php-$PHP_VERSION.tar.bz2.asc/from/this/mirror" -o php.tar.bz2.asc \
 	&& gpg --verify php.tar.bz2.asc \
 	&& mkdir -p /usr/src/php \
-	&& tar -xf php.tar.bz2 -C /usr/src/php --strip-components=1 \
+	&& tar -xof php.tar.bz2 -C /usr/src/php --strip-components=1 \
 	&& rm php.tar.bz2* \
 	&& cd /usr/src/php \
 	&& ./configure \
@@ -61,7 +60,7 @@ RUN buildDeps=" \
 	&& make -j"$(nproc)" \
 	&& make install \
 	&& { find /usr/local/bin /usr/local/sbin -type f -executable -exec strip --strip-all '{}' + || true; } \
-	&& apt-get purge -y --auto-remove $buildDeps \
+	&& apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false -o APT::AutoRemove::SuggestsImportant=false $buildDeps \
 	&& make clean
 
 COPY docker-php-ext-* /usr/local/bin/
